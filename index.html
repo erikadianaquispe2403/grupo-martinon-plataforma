@@ -587,6 +587,12 @@ th:nth-child(4),td:nth-child(4){width:15%}
     </button>
     <div id="newProjectHotelDropdown" class="multi-select-dropdown hidden"></div>
   </div>
+  <div id="newProjectSpecificHotelBox" class="hidden" style="margin-top:10px">
+    <label>Hotel de esta evaluación</label>
+    <select id="newProjectSpecificHotel" onchange="onNewProjectSpecificHotelChange()">
+      <option value="">Selecciona un hotel...</option>
+    </select>
+  </div>
 </div>
 <div><label>Fecha de visita</label><input id="visitDate" type="date"></div><div><label>Estado de la evaluación</label><select id="evaluationStatus"><option>Borrador</option><option>En proceso</option></select></div><div><label>Evaluador</label><input id="evaluator" value="Erika Quispe" placeholder="Erika Quispe"></div><div><label>Complejo</label><input id="hotelComplex" readonly></div><div><label>Director del Hotel</label><input id="hotelDirector" readonly></div>
 <div><label>Director Corporativo responsable</label><input id="corporateDirector" readonly></div><div><label>Gerente entrevistado</label><input id="manager" placeholder="Nombre / cargo"></div>
@@ -1226,6 +1232,31 @@ function renderNewProjectHotelDropdown(){
       <button type="button" onclick="closeNewProjectHotelDropdown()">Aplicar</button>
     </div>`;
  updateNewProjectHotelSummary();
+ renderNewProjectSpecificHotelOptions();
+}
+
+function renderNewProjectSpecificHotelOptions(){
+ const box=document.getElementById("newProjectSpecificHotelBox");
+ const sel=document.getElementById("newProjectSpecificHotel");
+ if(!box||!sel)return;
+ const hasHotels=newProjectSelectedHotels.length>0;
+ box.classList.toggle("hidden",!hasHotels);
+ const current=sel.value;
+ sel.innerHTML='<option value="">Selecciona un hotel...</option>'+newProjectSelectedHotels.map(h=>`<option value="${h}">${h}</option>`).join("");
+ if(newProjectSelectedHotels.includes(current)){
+   sel.value=current;
+ }else{
+   sel.value="";
+   const hiddenHotel=document.getElementById("hotel");
+   if(hiddenHotel){hiddenHotel.value="";showPropertyInfo();}
+ }
+}
+
+function onNewProjectSpecificHotelChange(){
+ const val=document.getElementById("newProjectSpecificHotel").value;
+ const hiddenHotel=document.getElementById("hotel");
+ if(hiddenHotel)hiddenHotel.value=val;
+ onHotelChange();
 }
 
 function toggleNewProjectHotel(projectHotel,checked){
@@ -1235,6 +1266,7 @@ function toggleNewProjectHotel(projectHotel,checked){
    newProjectSelectedHotels=newProjectSelectedHotels.filter(h=>h!==projectHotel);
  }
  updateNewProjectHotelSummary();
+ renderNewProjectSpecificHotelOptions();
 }
 
 function selectAllNewProjectHotels(){
@@ -1256,6 +1288,7 @@ function toggleNewProjectHotelDropdown(event){
 function closeNewProjectHotelDropdown(){
  document.getElementById("newProjectHotelDropdown")?.classList.add("hidden");
  updateNewProjectHotelSummary();
+ renderNewProjectSpecificHotelOptions();
 }
 
 function updateHotelSelectionMode(){
@@ -1274,11 +1307,14 @@ function updateHotelSelectionMode(){
 
  if(isNew){
    document.getElementById("hotelDirector").value="";
+   const complexField=document.getElementById("hotelComplex");if(complexField)complexField.value="";
    ["pSociety","pRnc","pSpirit","pLocation","pType","pRooms"].forEach(id=>{
      const el=document.getElementById(id);if(el)el.textContent="—";
    });
    renderNewProjectHotelDropdown();
  }else{
+   const specificBox=document.getElementById("newProjectSpecificHotelBox");
+   if(specificBox)specificBox.classList.add("hidden");
    closeNewProjectHotelDropdown();
  }
 }
