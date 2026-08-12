@@ -563,6 +563,7 @@ th:nth-child(4),td:nth-child(4){width:15%}
       <option value="__new__">+ Crear nuevo proyecto</option>
     </select>
     <button id="deleteProjectBtn" type="button" class="danger project-delete-btn hidden" onclick="deleteCurrentProject()">Eliminar proyecto</button>
+    <button id="renameProjectBtn" type="button" class="secondary project-delete-btn hidden" onclick="renameCurrentProject()">Renombrar proyecto</button>
   </div>
 </div>
 <div id="newProjectBox" class="hidden"><label>Nuevo proyecto</label><input id="newProjectName" placeholder="Nombre del nuevo proyecto" oninput="renderProjectHotelChecks();document.getElementById('projectScoreLabel').textContent=this.value||'Nuevo proyecto'"></div>
@@ -1128,12 +1129,69 @@ function isCustomProject(projectName){
 
 function updateDeleteProjectButton(){
  const btn=document.getElementById("deleteProjectBtn");
- if(!btn)return;
+ const renameBtn=document.getElementById("renameProjectBtn");
  const selector=document.getElementById("project");
  const project=getProject();
- const canDelete=selector && selector.value!=="__new__" && isCustomProject(project) && Object.prototype.hasOwnProperty.call(savedTemplates,project);
- btn.classList.toggle("hidden",!canDelete);
- btn.disabled=!canDelete;
+ const canManage=selector && selector.value!=="__new__" && isCustomProject(project) && Object.prototype.hasOwnProperty.call(savedTemplates,project);
+ if(btn){btn.classList.toggle("hidden",!canManage);btn.disabled=!canManage;}
+ if(renameBtn){renameBtn.classList.toggle("hidden",!canManage);renameBtn.disabled=!canManage;}
+}
+
+function renameCurrentProject(){
+ const oldName=getProject();
+ if(!isCustomProject(oldName) || !Object.prototype.hasOwnProperty.call(savedTemplates,oldName)){
+   alert("Este proyecto forma parte de la configuración base y no puede renombrarse.");
+   return;
+ }
+ const input=prompt(`Nuevo nombre para el proyecto "${oldName}":`,oldName);
+ if(input===null)return;
+ const newName=input.trim();
+ if(!newName || newName===oldName)return;
+ if(PROTECTED_PROJECTS.includes(newName) || Object.prototype.hasOwnProperty.call(savedTemplates,newName)){
+   alert(`Ya existe un proyecto llamado "${newName}". Elige otro nombre.`);
+   return;
+ }
+
+ // Plantilla y criterios
+ savedTemplates[newName]=savedTemplates[oldName];delete savedTemplates[oldName];
+ templates[newName]=templates[oldName];delete templates[oldName];
+
+ // Hoteles aplicables y responsable corporativo
+ if(projectHotels[oldName]!==undefined){projectHotels[newName]=projectHotels[oldName];delete projectHotels[oldName];}
+ if(typeof projectCorporateOwners!=="undefined" && projectCorporateOwners[oldName]!==undefined){
+   projectCorporateOwners[newName]=projectCorporateOwners[oldName];delete projectCorporateOwners[oldName];
+ }
+
+ // Borradores guardados (las llaves incluyen el nombre del proyecto)
+ const newDrafts={};
+ Object.keys(drafts).forEach(k=>{
+   if(k.startsWith(oldName+"|||")){
+     newDrafts[newName+k.slice(oldName.length)]=drafts[k];
+   }else{
+     newDrafts[k]=drafts[k];
+   }
+ });
+ drafts=newDrafts;
+
+ // Evaluaciones ya guardadas
+ assessments.forEach(r=>{if(r.project===oldName)r.project=newName;});
+
+ safeStorageSet(templateStorageKey,JSON.stringify(savedTemplates));
+ safeStorageSet(projectHotelsStorageKey,JSON.stringify(projectHotels));
+ safeStorageSet(draftStorageKey,JSON.stringify(drafts));
+ safeStorageSet(storageKey,JSON.stringify(assessments));
+
+ populateProjectDropdown();
+ document.getElementById("project").value=newName;
+ activeContextKey="";
+ onProjectChange();
+ renderHistory();
+ fillReportProjects();
+ generateExecutiveReport();
+ if(typeof renderDashboard==="function")renderDashboard();
+ updateDeleteProjectButton();
+
+ alert(`El proyecto "${oldName}" ahora se llama "${newName}". Todas sus evaluaciones, borradores y hoteles se conservaron.`);
 }
 
 function deleteCurrentProject(){
@@ -1236,9 +1294,11 @@ function renderNewProjectHotelDropdown(){
 }
 
 function renderNewProjectSpecificHotelOptions(){
+ const isNew=document.getElementById("project")?.value==="__new__";
  const box=document.getElementById("newProjectSpecificHotelBox");
  const sel=document.getElementById("newProjectSpecificHotel");
  if(!box||!sel)return;
+ if(!isNew){box.classList.add("hidden");return;}
  const hasHotels=newProjectSelectedHotels.length>0;
  box.classList.toggle("hidden",!hasHotels);
  const current=sel.value;
