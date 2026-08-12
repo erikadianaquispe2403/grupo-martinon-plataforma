@@ -165,6 +165,9 @@ th:nth-child(4),td:nth-child(4){width:15%}
 .template-criterion{display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:center;margin:7px 0}
 .template-criterion input{margin:0}
 .mini-btn{padding:7px 9px;border-radius:9px;font-size:11px}
+.field-with-action{display:flex;gap:8px;align-items:center}
+.field-with-action input{flex:1}
+.field-with-action .mini-btn{flex-shrink:0;white-space:nowrap}
 .save-bar{position:sticky;bottom:8px;z-index:20;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:16px;padding:12px;margin-top:16px;box-shadow:0 8px 24px rgba(15,23,42,.14)}
 @media(max-width:950px){.template-criterion{grid-template-columns:1fr auto}.save-bar{position:static}.save-bar button{width:100%}}
 
@@ -596,7 +599,7 @@ th:nth-child(4),td:nth-child(4){width:15%}
   </div>
 </div>
 <div><label>Fecha de visita</label><input id="visitDate" type="date"></div><div><label>Estado de la evaluación</label><select id="evaluationStatus"><option>Borrador</option><option>En proceso</option></select></div><div><label>Evaluador</label><input id="evaluator" value="Erika Quispe" placeholder="Erika Quispe"></div><div><label>Complejo</label><input id="hotelComplex" readonly></div><div><label>Director del Hotel</label><input id="hotelDirector" readonly></div>
-<div><label>Director Corporativo responsable</label><input id="corporateDirector" readonly></div><div><label>Gerente entrevistado</label><input id="manager" placeholder="Nombre / cargo"></div>
+<div><label>Director Corporativo responsable</label><div class="field-with-action"><input id="corporateDirector" readonly><button type="button" class="secondary mini-btn" onclick="editCorporateDirector()">✏️ Editar</button></div></div><div><label>Gerente entrevistado</label><input id="manager" placeholder="Nombre / cargo"></div>
 <div id="genericAreaBox"><label>Área evaluada</label><input id="area" placeholder="Ej. Recepción, Alojamiento, Mantenimiento"></div><div><label>Firma del evaluador</label><input id="evaluatorSignature" placeholder="Nombre completo / firma digital"></div>
 <div id="checkinAreaBox" class="checkin-area-box hidden"><label>Área de Check-in evaluada *</label><select id="checkinArea" onchange="onCheckinAreaChange()"><option value="">Seleccione</option><option value="Front Desk">Front Desk</option><option value="Club">Club</option></select><div class="unit-help"><strong>Front Desk y Club se registran como evaluaciones independientes.</strong><br><strong>Club:</strong> incluye Preferred Club, Xhale Club o cualquier área VIP equivalente de la propiedad.</div></div>
 <div id="comanderoUnitsBox" class="comandero-units-box hidden"><label>Restaurantes / centros de consumo evaluados *</label><div class="unit-help">Puedes registrar uno o varios nombres libremente, independientemente del hotel seleccionado.</div><div id="operationalUnitList" class="operational-unit-list"></div><div class="actions"><button type="button" class="secondary" onclick="addOperationalUnit()">+ Agregar restaurante / centro de consumo</button></div></div>
@@ -1005,6 +1008,12 @@ const projectCorporateOwners={
 "Check-in Digital":"Glenys Silverio",
 "Comandero Digital":"Emilio Punzano"
 };
+const projectOwnersStorageKey="gm_cia_project_owners_v1";
+try{
+ const savedOwners=JSON.parse(localStorage.getItem(projectOwnersStorageKey)||"{}");
+ if(savedOwners && typeof savedOwners==="object")Object.assign(projectCorporateOwners,savedOwners);
+}catch(e){}
+function persistProjectOwners(){safeStorageSet(projectOwnersStorageKey,JSON.stringify(projectCorporateOwners))}
 const projectHotelsStorageKey="gm_cia_project_hotels_v33";
 let projectHotels={};
 try{ projectHotels=JSON.parse(localStorage.getItem(projectHotelsStorageKey)||"{}"); if(!projectHotels||typeof projectHotels!=="object") projectHotels={}; }catch(e){ projectHotels={}; }
@@ -1127,6 +1136,24 @@ function isCustomProject(projectName){
  return !!projectName && !PROTECTED_PROJECTS.includes(projectName) && projectName!=="Nuevo proyecto";
 }
 
+function editCorporateDirector(){
+ const project=getProject();
+ if(!project){alert("Selecciona primero un proyecto.");return;}
+ const current=projectCorporateOwners[project]||"";
+ const input=prompt(`Director Corporativo responsable de "${project}":`,current);
+ if(input===null)return;
+ const trimmed=input.trim();
+ if(trimmed){
+   projectCorporateOwners[project]=trimmed;
+ }else{
+   delete projectCorporateOwners[project];
+ }
+ persistProjectOwners();
+ applyProjectDefaults();
+ scheduleDraftSave();
+ if(typeof showToast==="function")showToast("Director Corporativo actualizado.","success");
+}
+
 function updateDeleteProjectButton(){
  const btn=document.getElementById("deleteProjectBtn");
  const renameBtn=document.getElementById("renameProjectBtn");
@@ -1160,6 +1187,7 @@ function renameCurrentProject(){
  if(projectHotels[oldName]!==undefined){projectHotels[newName]=projectHotels[oldName];delete projectHotels[oldName];}
  if(typeof projectCorporateOwners!=="undefined" && projectCorporateOwners[oldName]!==undefined){
    projectCorporateOwners[newName]=projectCorporateOwners[oldName];delete projectCorporateOwners[oldName];
+   persistProjectOwners();
  }
 
  // Borradores guardados (las llaves incluyen el nombre del proyecto)
@@ -1229,6 +1257,7 @@ function deleteCurrentProject(){
  safeStorageSet(projectHotelsStorageKey,JSON.stringify(projectHotels));
  safeStorageSet(draftStorageKey,JSON.stringify(drafts));
  safeStorageSet(storageKey,JSON.stringify(assessments));
+ persistProjectOwners();
 
  populateProjectDropdown();
  document.getElementById("project").value="Check-in Digital";
@@ -1416,7 +1445,7 @@ function saveNewProjectTemplate(){
  templates[name]=cloneData(cleaned);
  savedTemplates[name]=cloneData(cleaned);
  safeStorageSet(templateStorageKey,JSON.stringify(savedTemplates));
- if(owner)projectCorporateOwners[name]=owner;
+ if(owner){projectCorporateOwners[name]=owner;persistProjectOwners();}
  projectHotels[name]=selectedHotels;
  safeStorageSet(projectHotelsStorageKey,JSON.stringify(projectHotels));
  populateProjectDropdown();
