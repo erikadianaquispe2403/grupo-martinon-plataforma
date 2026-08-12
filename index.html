@@ -1434,14 +1434,14 @@ function syncNewProjectChecklist(){
 function addNewProjectCriterion(pi){newProjectDraft[pi].items.push("");renderNewProjectBuilder();syncNewProjectChecklist()}
 function removeNewCriterion(pi,ci){newProjectDraft[pi].items.splice(ci,1);renderNewProjectBuilder();syncNewProjectChecklist()}
 function moveNewCriterion(pi,ci,dir){const a=newProjectDraft[pi].items,n=ci+dir;if(n<0||n>=a.length)return;[a[ci],a[n]]=[a[n],a[ci]];renderNewProjectBuilder();syncNewProjectChecklist()}
-function saveNewProjectTemplate(){
+function persistNewProjectAsTemplate(silent,preserveChecklist){
  const name=document.getElementById("newProjectName").value.trim();
- if(!name)return alert("Escribe el nombre del nuevo proyecto.");
+ if(!name){if(!silent)alert("Escribe el nombre del nuevo proyecto.");return false;}
  const owner=document.getElementById("newProjectOwner").value.trim();
  const cleaned=newProjectDraft.map(p=>({block:p.block,items:p.items.map(x=>String(x||"").trim()).filter(Boolean)}));
- if(cleaned.every(p=>!p.items.length))return alert("Agrega al menos un criterio a la plantilla.");
+ if(cleaned.every(p=>!p.items.length)){if(!silent)alert("Agrega al menos un criterio a la plantilla.");return false;}
  const selectedHotels=[...newProjectSelectedHotels];
- if(!selectedHotels.length)return alert("Selecciona al menos un hotel aplicable.");
+ if(!selectedHotels.length){if(!silent)alert("Selecciona al menos un hotel aplicable.");return false;}
  templates[name]=cloneData(cleaned);
  savedTemplates[name]=cloneData(cleaned);
  safeStorageSet(templateStorageKey,JSON.stringify(savedTemplates));
@@ -1454,15 +1454,20 @@ function saveNewProjectTemplate(){
  document.getElementById("newProjectBuilder").classList.add("hidden");
  updateHotelSelectionMode();
  document.getElementById("projectScoreLabel").textContent=name;
- checklistState={};opportunities=[];actions=[];operationalUnits=[];
+ if(!preserveChecklist){checklistState={};opportunities=[];actions=[];operationalUnits=[];}
  loadChecklist();renderOpportunities();renderActions();
  applyProjectDefaults();showPropertyInfo();updateProjectSpecificFields();
  activeContextKey=contextKey();
  fillReportProjects();
  updateSummary();
  updateDeleteProjectButton();
- alert("Proyecto y plantilla guardados correctamente. Ya puedes evaluarlo desde Check List.");
- setStep(2);
+ return true;
+}
+function saveNewProjectTemplate(){
+ if(persistNewProjectAsTemplate(false,false)){
+   alert("Proyecto y plantilla guardados correctamente. Ya puedes evaluarlo desde Check List.");
+   setStep(2);
+ }
 }
 function addCriterionToPillar(blockIndex){
  const name=prompt("Escribe el nuevo criterio:");
@@ -1806,6 +1811,12 @@ function buildAssessmentRecord(){
 }
 
 function saveAssessment(){
+ if(document.getElementById("project").value==="__new__"){
+   if(!persistNewProjectAsTemplate(true,true)){
+     showToast("Antes de guardar: escribe el nombre del proyecto, agrega al menos un criterio y selecciona al menos un hotel aplicable.","error");
+     return;
+   }
+ }
  const r=buildAssessmentRecord();
  if(!r.project||!r.hotel||!r.visitDate){
    showToast("Completa Proyecto, Hotel y Fecha de visita antes de guardar.","error");
