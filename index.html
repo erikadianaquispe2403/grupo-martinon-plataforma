@@ -569,7 +569,7 @@ th:nth-child(4),td:nth-child(4){width:15%}
     <button id="renameProjectBtn" type="button" class="secondary project-delete-btn hidden" onclick="renameCurrentProject()">Renombrar proyecto</button>
   </div>
 </div>
-<div id="newProjectBox" class="hidden"><label>Nuevo proyecto</label><input id="newProjectName" placeholder="Nombre del nuevo proyecto" oninput="renderProjectHotelChecks();document.getElementById('projectScoreLabel').textContent=this.value||'Nuevo proyecto'"></div>
+<div id="newProjectBox" class="hidden"><label>Nuevo proyecto</label><input id="newProjectName" placeholder="Nombre del nuevo proyecto" oninput="renderProjectHotelChecks();document.getElementById('projectScoreLabel').textContent=this.value||'Nuevo proyecto';persistNewProjectDraft()"></div>
 <div id="hotelField">
   <label id="hotelFieldLabel">Hotel</label>
   <select id="hotel" onchange="onHotelChange()">
@@ -626,7 +626,7 @@ th:nth-child(4),td:nth-child(4){width:15%}
   <h3 class="block-title">Configuración del Nuevo Proyecto</h3>
   <div class="grid2">
     <div><label>Descripción del proyecto</label><textarea id="newProjectDescription" placeholder="Objetivo y alcance del proyecto..."></textarea></div>
-    <div><label>Director Corporativo responsable</label><input id="newProjectOwner" placeholder="Nombre del Director Corporativo"></div>
+    <div><label>Director Corporativo responsable</label><input id="newProjectOwner" placeholder="Nombre del Director Corporativo" oninput="persistNewProjectDraft()"></div>
   </div>
   <p class="small">Los cuatro pilares se crean automáticamente. Agrega los criterios en el orden natural de la operación.</p>
   <div id="newProjectPillars"></div>
@@ -1284,6 +1284,36 @@ const templateStorageKey="gm_cia_templates_v35_admin_total";
 let savedTemplates=JSON.parse(safeStorageGet(templateStorageKey)||"{}");
 Object.keys(savedTemplates).forEach(k=>templates[k]=savedTemplates[k]);
 let newProjectDraft=PILLAR_NAMES.map(name=>({block:name,items:[]}));
+const newProjectDraftStorageKey="gm_cia_new_project_draft_v1";
+function persistNewProjectDraft(){
+ try{
+   const payload={
+     name:document.getElementById("newProjectName")?.value||"",
+     owner:document.getElementById("newProjectOwner")?.value||"",
+     draft:newProjectDraft,
+     hotels:newProjectSelectedHotels
+   };
+   safeStorageSet(newProjectDraftStorageKey,JSON.stringify(payload));
+ }catch(e){}
+}
+function loadNewProjectDraft(){
+ try{
+   const raw=localStorage.getItem(newProjectDraftStorageKey);
+   if(!raw)return false;
+   const payload=JSON.parse(raw);
+   if(!payload||!Array.isArray(payload.draft))return false;
+   const hasContent=payload.draft.some(p=>(p.items||[]).some(x=>String(x||"").trim()))||(payload.hotels||[]).length||(payload.name||"").trim();
+   if(!hasContent)return false;
+   newProjectDraft=payload.draft;
+   newProjectSelectedHotels=Array.isArray(payload.hotels)?payload.hotels:[];
+   const nameField=document.getElementById("newProjectName");if(nameField)nameField.value=payload.name||"";
+   const ownerField=document.getElementById("newProjectOwner");if(ownerField)ownerField.value=payload.owner||"";
+   return true;
+ }catch(e){return false;}
+}
+function clearNewProjectDraft(){
+ try{localStorage.removeItem(newProjectDraftStorageKey);}catch(e){}
+}
 let newProjectSelectedHotels=[];
 function todayISO(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().split("T")[0]}
 function generateCode(){return "GM-IP-"+new Date().getFullYear()+"-"+String(assessments.length+1).padStart(4,"0")}
@@ -1356,16 +1386,19 @@ function toggleNewProjectHotel(projectHotel,checked){
  }
  updateNewProjectHotelSummary();
  renderNewProjectSpecificHotelOptions();
+ persistNewProjectDraft();
 }
 
 function selectAllNewProjectHotels(){
  newProjectSelectedHotels=[...getAllPropertyNames()];
  renderNewProjectHotelDropdown();
+ persistNewProjectDraft();
 }
 
 function clearNewProjectHotels(){
  newProjectSelectedHotels=[];
  renderNewProjectHotelDropdown();
+ persistNewProjectDraft();
 }
 
 function toggleNewProjectHotelDropdown(event){
@@ -1425,15 +1458,15 @@ function renderNewProjectBuilder(){
  const box=document.getElementById("newProjectPillars"); if(!box)return;
  box.innerHTML=newProjectDraft.map((p,pi)=>`<div class="template-pillar"><strong>${p.block}</strong><div id="np_${pi}">${p.items.map((x,ci)=>templateCriterionRow(pi,ci,x)).join("")}</div><button type="button" class="secondary mini-btn" onclick="addNewProjectCriterion(${pi})">+ Agregar criterio</button></div>`).join("");
 }
-function templateCriterionRow(pi,ci,text){return `<div class="template-criterion"><textarea class="project-criterion-builder" oninput="newProjectDraft[${pi}].items[${ci}]=this.value;autoResize(this)" onblur="syncNewProjectChecklist()">${String(text||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><button type="button" class="secondary mini-btn" onclick="moveNewCriterion(${pi},${ci},-1)">↑</button><button type="button" class="secondary mini-btn" onclick="moveNewCriterion(${pi},${ci},1)">↓</button><button type="button" class="danger mini-btn" onclick="removeNewCriterion(${pi},${ci})">×</button></div>`}
+function templateCriterionRow(pi,ci,text){return `<div class="template-criterion"><textarea class="project-criterion-builder" oninput="newProjectDraft[${pi}].items[${ci}]=this.value;autoResize(this);persistNewProjectDraft()" onblur="syncNewProjectChecklist()">${String(text||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea><button type="button" class="secondary mini-btn" onclick="moveNewCriterion(${pi},${ci},-1)">↑</button><button type="button" class="secondary mini-btn" onclick="moveNewCriterion(${pi},${ci},1)">↓</button><button type="button" class="danger mini-btn" onclick="removeNewCriterion(${pi},${ci})">×</button></div>`}
 function syncNewProjectChecklist(){
  if(document.getElementById("project")?.value!=="__new__")return;
  checklistState={};
  loadChecklist();
 }
-function addNewProjectCriterion(pi){newProjectDraft[pi].items.push("");renderNewProjectBuilder();syncNewProjectChecklist()}
-function removeNewCriterion(pi,ci){newProjectDraft[pi].items.splice(ci,1);renderNewProjectBuilder();syncNewProjectChecklist()}
-function moveNewCriterion(pi,ci,dir){const a=newProjectDraft[pi].items,n=ci+dir;if(n<0||n>=a.length)return;[a[ci],a[n]]=[a[n],a[ci]];renderNewProjectBuilder();syncNewProjectChecklist()}
+function addNewProjectCriterion(pi){newProjectDraft[pi].items.push("");renderNewProjectBuilder();syncNewProjectChecklist();persistNewProjectDraft()}
+function removeNewCriterion(pi,ci){newProjectDraft[pi].items.splice(ci,1);renderNewProjectBuilder();syncNewProjectChecklist();persistNewProjectDraft()}
+function moveNewCriterion(pi,ci,dir){const a=newProjectDraft[pi].items,n=ci+dir;if(n<0||n>=a.length)return;[a[ci],a[n]]=[a[n],a[ci]];renderNewProjectBuilder();syncNewProjectChecklist();persistNewProjectDraft()}
 function persistNewProjectAsTemplate(silent,preserveChecklist){
  const name=document.getElementById("newProjectName").value.trim();
  if(!name){if(!silent)alert("Escribe el nombre del nuevo proyecto.");return false;}
@@ -1461,6 +1494,7 @@ function persistNewProjectAsTemplate(silent,preserveChecklist){
  fillReportProjects();
  updateSummary();
  updateDeleteProjectButton();
+ clearNewProjectDraft();
  return true;
 }
 function saveNewProjectTemplate(){
@@ -1557,8 +1591,10 @@ function nextStep(){setStep(currentStep+1)} function prevStep(){setStep(currentS
 function onProjectChange(){
  saveActiveDraft();
  document.getElementById("newProjectBox").classList.toggle("hidden",document.getElementById("project").value!=="__new__");document.getElementById("newProjectBuilder").classList.toggle("hidden",document.getElementById("project").value!=="__new__");if(document.getElementById("project").value==="__new__"){
-   newProjectDraft=PILLAR_NAMES.map(name=>({block:name,items:[]}));
-   newProjectSelectedHotels=[];
+   if(!loadNewProjectDraft()){
+     newProjectDraft=PILLAR_NAMES.map(name=>({block:name,items:[]}));
+     newProjectSelectedHotels=[];
+   }
    renderNewProjectBuilder();
    renderNewProjectHotelDropdown();
  }
