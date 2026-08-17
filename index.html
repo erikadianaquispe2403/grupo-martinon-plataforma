@@ -598,7 +598,7 @@ th:nth-child(4),td:nth-child(4){width:15%}
     </select>
   </div>
 </div>
-<div><label>Fecha de visita</label><input id="visitDate" type="date"></div><div><label>Estado de la evaluación</label><select id="evaluationStatus"><option>Borrador</option><option>En proceso</option></select></div><div><label>Evaluador</label><input id="evaluator" value="Erika Quispe" placeholder="Erika Quispe"></div><div><label>Complejo</label><input id="hotelComplex" readonly></div><div><label>Director del Hotel</label><input id="hotelDirector" readonly></div>
+<div><label>Fecha de visita</label><input id="visitDate" type="date"></div><div><label>Estado de la evaluación</label><select id="evaluationStatus"><option>Borrador</option><option>En proceso</option></select></div><div><label>Evaluador</label><input id="evaluator" value="Erika Quispe" placeholder="Erika Quispe"></div><div><label>Complejo</label><input id="hotelComplex" readonly></div><div><label>Director del Hotel</label><div class="field-with-action"><input id="hotelDirector" readonly><button type="button" class="secondary mini-btn" onclick="editHotelDirector()">✏️ Editar</button></div></div>
 <div><label>Director Corporativo responsable</label><div class="field-with-action"><input id="corporateDirector" readonly><button type="button" class="secondary mini-btn" onclick="editCorporateDirector()">✏️ Editar</button></div></div><div><label>Gerente entrevistado</label><input id="manager" placeholder="Nombre / cargo"></div>
 <div id="genericAreaBox"><label>Área evaluada</label><input id="area" placeholder="Ej. Recepción, Alojamiento, Mantenimiento"></div><div><label>Firma del evaluador</label><input id="evaluatorSignature" placeholder="Nombre completo / firma digital"></div>
 <div id="checkinAreaBox" class="checkin-area-box hidden"><label>Área de Check-in evaluada *</label><select id="checkinArea" onchange="onCheckinAreaChange()"><option value="">Seleccione</option><option value="Front Desk">Front Desk</option><option value="Club">Club</option></select><div class="unit-help"><strong>Front Desk y Club se registran como evaluaciones independientes.</strong><br><strong>Club:</strong> incluye Preferred Club, Xhale Club o cualquier área VIP equivalente de la propiedad.</div></div>
@@ -877,7 +877,8 @@ const CLOUD_SYNC_KEYS = [
   "gm_cia_assessments_v33_clean",
   "gm_cia_templates_v35_admin_total",
   "gm_cia_project_hotels_v33",
-  "gm_impl_eval_drafts_v33_clean"
+  "gm_impl_eval_drafts_v33_clean",
+  "gm_cia_hotel_directors_v1"
 ];
 
 const sb = (SUPABASE_URL.startsWith("http") && window.supabase)
@@ -918,6 +919,7 @@ async function cloudLoadAll() {
       if (row.key === "gm_cia_templates_v35_admin_total") savedTemplates = (row.value && typeof row.value === "object") ? row.value : {};
       if (row.key === "gm_cia_project_hotels_v33") projectHotels = (row.value && typeof row.value === "object") ? row.value : {};
       if (row.key === "gm_impl_eval_drafts_v33_clean") drafts = (row.value && typeof row.value === "object") ? row.value : {};
+      if (row.key === "gm_cia_hotel_directors_v1" && row.value && typeof row.value === "object") Object.assign(hotelDirectors, row.value);
     });
     return true;
   } catch (e) {
@@ -994,7 +996,7 @@ const properties={
 const initialFive=["Secrets Royal Beach","Dreams Royal Beach","Dreams Onyx","Dreams Flora","Breathless Punta Cana"];
 const hotelDirectors={
 "Secrets Royal Beach":"Roberto Iglesias",
-"Dreams Royal Beach":"Daniel Rodriguez",
+"Dreams Royal Beach":"Pendiente de asignación",
 "Breathless Punta Cana":"Omar Saavedra",
 "Dreams Onyx":"Alarilla Aragon",
 "Dreams Flora":"Antonio Parrado",
@@ -1014,6 +1016,12 @@ try{
  if(savedOwners && typeof savedOwners==="object")Object.assign(projectCorporateOwners,savedOwners);
 }catch(e){}
 function persistProjectOwners(){safeStorageSet(projectOwnersStorageKey,JSON.stringify(projectCorporateOwners))}
+const hotelDirectorsStorageKey="gm_cia_hotel_directors_v1";
+try{
+ const savedDirectors=JSON.parse(localStorage.getItem(hotelDirectorsStorageKey)||"{}");
+ if(savedDirectors && typeof savedDirectors==="object")Object.assign(hotelDirectors,savedDirectors);
+}catch(e){}
+function persistHotelDirectors(){safeStorageSet(hotelDirectorsStorageKey,JSON.stringify(hotelDirectors))}
 const projectHotelsStorageKey="gm_cia_project_hotels_v33";
 let projectHotels={};
 try{ projectHotels=JSON.parse(localStorage.getItem(projectHotelsStorageKey)||"{}"); if(!projectHotels||typeof projectHotels!=="object") projectHotels={}; }catch(e){ projectHotels={}; }
@@ -1152,6 +1160,20 @@ function editCorporateDirector(){
  applyProjectDefaults();
  scheduleDraftSave();
  if(typeof showToast==="function")showToast("Director Corporativo actualizado.","success");
+}
+
+function editHotelDirector(){
+ const hotel=document.getElementById("hotel")?document.getElementById("hotel").value:"";
+ if(!hotel){alert("Selecciona primero un hotel.");return;}
+ const current=hotelDirectors[hotel]||"";
+ const input=prompt(`Director General de "${hotel}":\n(Deja el campo vacío si el hotel no tiene director asignado actualmente)`,current);
+ if(input===null)return;
+ const trimmed=input.trim();
+ hotelDirectors[hotel]=trimmed?trimmed:"Pendiente de asignación";
+ persistHotelDirectors();
+ updateHotelDirector();
+ scheduleDraftSave();
+ if(typeof showToast==="function")showToast("Director del Hotel actualizado para todas las evaluaciones.","success");
 }
 
 function updateDeleteProjectButton(){
@@ -1573,6 +1595,11 @@ function setStep(n){
  document.getElementById("s"+currentStep).classList.add("active");
  const saveBar=document.getElementById("globalSaveBar");
  if(saveBar)saveBar.style.display=(currentStep===0||currentStep===6||currentStep===7)?"none":"flex";
+ const historyPanelEl=document.getElementById("historyPanel");
+ if(historyPanelEl){
+   historyPanelEl.classList.toggle("hidden",currentStep===0||currentStep===6||currentStep===7);
+   if(!historyPanelEl.classList.contains("hidden"))renderHistory();
+ }
  const prevBtn=document.getElementById("bottomPrevBtn");
  const nextBtn=document.getElementById("bottomNextBtn");
  const progress=document.getElementById("pageProgress");
@@ -1800,7 +1827,27 @@ function fillOpportunityOptions(){const sel=document.getElementById("actOpportun
 function addAction(){const text=document.getElementById("actText").value.trim();if(!text)return alert("Agrega la acción.");const oppId=document.getElementById("actOpportunity").value;if(!oppId)return alert("Selecciona la oportunidad de mejora relacionada.");const opp=opportunities.find(o=>o.id===oppId)||{};const f=document.getElementById("actEvidence").files[0];actions.push({oppId,pillar:opp.pillar||"",criterion:opp.criterion||"",finding:opp.text||"",text,owner:document.getElementById("actOwner").value,date:document.getElementById("actDate").value,status:document.getElementById("actStatus").value,evidenceName:f?f.name:""});["actText","actOwner","actDate"].forEach(id=>document.getElementById(id).value="");document.getElementById("actEvidence").value="";document.getElementById("actOpportunity").value="";showSelectedOpportunity();renderActions()}
 function renderActions(){document.getElementById("actTable").innerHTML=actions.map((a,i)=>`<tr><td>${a.pillar||"-"}</td><td>${a.criterion||"-"}</td><td>${a.finding||(opportunities.find(o=>o.id===a.oppId)||{}).text||"-"}</td><td>${a.text}</td><td>${a.owner||"-"}</td><td>${a.date||"-"}</td><td>${a.status}</td><td>${a.evidenceName||"Sin evidencia"}${a.auto?'<div class="auto-tag">Generado desde Check List</div>':''}</td><td><button class="danger" onclick="actions.splice(${i},1);renderActions()">Borrar</button></td></tr>`).join("");updateSummary()}
 function updateSummary(){if(!document.getElementById("sumProject"))return;const sc=calculateScoreNoLoop();document.getElementById("sumProject").textContent=getProject();let hotelText=document.getElementById("hotel").value;if(isCheckinProject()&&document.getElementById("checkinArea").value)hotelText+=` | ${document.getElementById("checkinArea").value}`;if(isComanderoProject()){const units=operationalUnits.map(x=>String(x||"").trim()).filter(Boolean);if(units.length)hotelText+=` | ${units.join(", ")}`;}document.getElementById("sumHotel").textContent=hotelText;document.getElementById("sumPct").textContent=sc.pct+"%";document.getElementById("sumStatus").textContent=sc.status;document.getElementById("sumOpp").textContent=opportunities.length;document.getElementById("sumActions").textContent=actions.length;document.getElementById("sumOpenActions").textContent=actions.filter(a=>a.status!=="Completado").length}
-function renderHistory(){const box=document.getElementById("historyList");if(!assessments.length){box.innerHTML="<div class='assessments-card'>Aún no hay evaluaciones guardadas.</div>";return}box.innerHTML=assessments.slice().reverse().map(r=>{const unit=r.project==="Check-in Digital"?(r.checkinArea?` | Área: ${r.checkinArea}`:""):r.project==="Comandero Digital"&&r.operationalUnits?.length?` | Centros: ${r.operationalUnits.join(", ")}`:"";return `<div class="assessments-card"><strong>${r.code}</strong> | ${r.project} | ${r.hotel}${unit}<br>Fecha: ${r.visitDate} | Ejecución efectiva: <strong>${r.score}%</strong> | Estado: ${r.status}<br>Criterios: ${r.checklist.length} | Acciones: ${r.actions.length} | Oportunidades: ${r.opportunities.length}</div>`}).join("")}
+function renderHistory(){const box=document.getElementById("historyList");if(!assessments.length){box.innerHTML="<div class='assessments-card'>Aún no hay evaluaciones guardadas.</div>";return}box.innerHTML=assessments.slice().reverse().map(r=>{const unit=r.project==="Check-in Digital"?(r.checkinArea?` | Área: ${r.checkinArea}`:""):r.project==="Comandero Digital"&&r.operationalUnits?.length?` | Centros: ${r.operationalUnits.join(", ")}`:"";return `<div class="assessments-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><strong>${r.code}</strong> | ${r.project} | ${r.hotel}${unit}<br>Fecha: ${r.visitDate} | Ejecución efectiva: <strong>${r.score}%</strong> | Estado: ${r.status}<br>Criterios: ${r.checklist.length} | Acciones: ${r.actions.length} | Oportunidades: ${r.opportunities.length}</div><button type="button" class="danger mini-btn no-print" style="flex-shrink:0" onclick="deleteAssessment('${String(r.code||"").replace(/'/g,"\\'")}')">🗑️ Eliminar</button></div></div>`}).join("")}
+function deleteAssessment(code){
+ const idx=assessments.findIndex(r=>r.code===code);
+ if(idx===-1){showToast("No se encontró esa evaluación.","error");return;}
+ const r=assessments[idx];
+ const unit=r.project==="Check-in Digital"?(r.checkinArea?` | Área: ${r.checkinArea}`:""):r.project==="Comandero Digital"&&r.operationalUnits?.length?` | Centros: ${r.operationalUnits.join(", ")}`:"";
+ const confirmed=confirm(
+   `¿Eliminar esta evaluación guardada de forma permanente?\n\n`+
+   `Código: ${r.code}\nProyecto: ${r.project}\nHotel: ${r.hotel}${unit}\nFecha: ${r.visitDate}\n\n`+
+   `Esta acción no se puede deshacer y afectará el Dashboard y los reportes.`
+ );
+ if(!confirmed)return;
+ assessments.splice(idx,1);
+ safeStorageSet(storageKey,JSON.stringify(assessments));
+ renderHistory();
+ fillReportProjects();
+ generateExecutiveReport();
+ if(typeof renderDashboard==="function")renderDashboard();
+ renderCommentsPage();
+ showToast(`Evaluación ${code} eliminada.`);
+}
 
 
 function showToast(message,type="success"){
