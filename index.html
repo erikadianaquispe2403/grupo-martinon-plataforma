@@ -857,9 +857,40 @@ th:nth-child(4),td:nth-child(4){width:15%}
   
 </div>
 
+<details class="panel history-details" id="restorePanel" style="margin-top:10px">
+  <summary><strong>🔧 Restaurar respaldo (solo Admin)</strong></summary>
+  <div class="small" style="margin:10px 0">Pega aquí el contenido completo del archivo de respaldo (el texto que copiaste de la consola) y presiona "Restaurar". Esto reemplaza los datos guardados en este navegador y los sube a la nube si Supabase está conectado.</div>
+  <textarea id="restoreTextarea" rows="6" style="width:100%;font-family:monospace;font-size:12px" placeholder='Pega aquí el JSON del respaldo, por ejemplo: {"assessments":"[]","templates":"{...}",...}'></textarea>
+  <div style="margin-top:10px"><button type="button" class="danger" onclick="restoreFromBackupText()">Restaurar respaldo</button></div>
+</details>
 <div class="footer">Plataforma Corporativa de Evaluación y Seguimiento de Implementaciones | Grupo Martinón</div></div>
 
-<!-- ===== Conexión a Supabase (base de datos en la nube, para multiusuario) ===== -->
+<script>
+async function restoreFromBackupText(){
+  const raw = document.getElementById("restoreTextarea").value.trim();
+  if(!raw){alert("Pega primero el contenido del respaldo.");return;}
+  let data;
+  try{ data = JSON.parse(raw); }catch(e){ alert("Ese texto no es un respaldo válido (no se pudo leer como JSON). Revisa que lo hayas copiado completo."); return; }
+  const keyMap = {
+    assessments: "gm_cia_assessments_v33_clean",
+    templates: "gm_cia_templates_v35_admin_total",
+    projectHotels: "gm_cia_project_hotels_v33",
+    drafts: "gm_impl_eval_drafts_v33_clean",
+    hotelDirectors: "gm_cia_hotel_directors_v1"
+  };
+  const confirmed = confirm("¿Restaurar este respaldo? Esto reemplazará los datos guardados actualmente en este navegador con los del respaldo, y los subirá a la nube si Supabase está conectado. Esta acción no se puede deshacer.");
+  if(!confirmed) return;
+  let restoredCount = 0;
+  for(const [shortKey, storageKey] of Object.entries(keyMap)){
+    if(data[shortKey] === undefined || data[shortKey] === null) continue;
+    localStorage.setItem(storageKey, data[shortKey]);
+    restoredCount++;
+    if(typeof cloudPush === "function") await cloudPush(storageKey, data[shortKey]);
+  }
+  alert(`Respaldo restaurado (${restoredCount} secciones). La página se va a recargar ahora.`);
+  location.reload();
+}
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- ===== Librería para las gráficas de colores ===== -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
