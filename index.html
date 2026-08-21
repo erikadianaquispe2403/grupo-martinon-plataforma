@@ -640,6 +640,10 @@ th:nth-child(4),td:nth-child(4){width:15%}
 <div id="checklistHelp" class="summary-box" style="margin-bottom:12px">
   Los cuatro pilares permanecen fijos. En cada pilar puedes agregar los criterios necesarios, uno tras otro, siguiendo el flujo natural de la operación.
 </div>
+<div class="summary-box no-print" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+  <span>¿Los resultados ya marcados no aparecen en Oportunidades/Plan de Acción/Observaciones? (por ejemplo, tras importar un respaldo). Usa este botón para generarlos a partir de lo ya capturado aquí.</span>
+  <button type="button" class="secondary" onclick="resyncOpportunitiesFromChecklist()">🔄 Sincronizar Oportunidades desde este Check List</button>
+</div>
 <div class="score-row"><div class="score-card"><span>Porcentaje de Ejecución Efectiva</span><strong id="scoreValue">0%</strong><div id="statusBadge" class="badge red">Rojo</div></div><div class="score-card"><span>Criterios evaluados</span><strong id="criteriaCount">0</strong><div class="small">N/A no afecta el cálculo</div></div><div class="score-card"><span>Proyecto evaluado</span><strong id="projectScoreLabel" style="font-size:20px">Check-in Digital</strong><div class="small">Plantilla dinámica</div></div></div>
 <div id="checklistContainer"></div></section>
 
@@ -971,7 +975,82 @@ const OFFICIAL_VARALLO_RECORDS=[];
 const OFFICIAL_VARALLO_VERSION="CLEAN-V30";
 
 const storageKey="gm_cia_assessments_v33_clean";
-let currentStep=0, opportunities=[], actions=[], checklistState={}, operationalUnits=[];
+let currentStep=0, opportunities=[], actions=[], checklistState={}, operationalUnits=[], editingAssessmentCode=null;
+
+function loadAssessmentForEditing(code){
+  const r=assessments.find(a=>a.code===code);
+  if(!r){
+    if(typeof showToast==="function")showToast("No se encontró esa evaluación.","error");
+    return;
+  }
+  const confirmed=confirm(`¿Abrir la evaluación ${r.code} (${r.project} | ${r.hotel}) para editarla?\n\nSe reemplazará cualquier información sin guardar que tengas en el formulario ahora mismo. Al volver a guardar, se actualizará esta misma evaluación (no se creará una duplicada).`);
+  if(!confirmed)return;
+
+  editingAssessmentCode=code;
+
+  document.getElementById("project").value=r.project;
+  onProjectChange();
+
+  document.getElementById("hotel").value=r.hotel;
+  if(typeof updateHotelDirector==="function")updateHotelDirector();
+  if(typeof showPropertyInfo==="function")showPropertyInfo();
+
+  document.getElementById("visitDate").value=r.visitDate||"";
+  document.getElementById("evaluator").value=r.evaluator||"";
+  if(document.getElementById("corporateDirector"))document.getElementById("corporateDirector").value=r.corporateDirector||"";
+  if(document.getElementById("manager"))document.getElementById("manager").value=r.manager||"";
+  if(document.getElementById("area"))document.getElementById("area").value=r.area||"";
+  if(document.getElementById("checkinArea"))document.getElementById("checkinArea").value=r.checkinArea||"";
+  if(document.getElementById("shift"))document.getElementById("shift").value=r.shift||"";
+  operationalUnits=Array.isArray(r.operationalUnits)?[...r.operationalUnits]:[];
+  if(typeof renderOperationalUnits==="function")renderOperationalUnits();
+  if(typeof updateProjectSpecificFields==="function")updateProjectSpecificFields();
+
+  // Reconstruye checklistState emparejando cada criterio guardado con su posición
+  // ACTUAL en la plantilla del proyecto (por pilar + texto del criterio).
+  checklistState={};
+  const tpl=getTemplate();
+  const savedByBlockItem={};
+  (r.checklist||[]).forEach(entry=>{
+    savedByBlockItem[(entry.block||"")+"|||"+(entry.item||"")]=entry;
+  });
+  tpl.forEach((block,b)=>{
+    (block.items||[]).forEach((item,i)=>{
+      const key=b+"_"+i;
+      const saved=savedByBlockItem[(block.block||"")+"|||"+item];
+      checklistState[key]=saved?{...saved,block:block.block,item}:{block:block.block,item,result:"",obs:"",evidenceName:"",editable:false};
+    });
+  });
+
+  opportunities=cloneData(r.opportunities||[]);
+  actions=cloneData(r.actions||[]);
+  if(document.getElementById("generalComments"))document.getElementById("generalComments").value=r.generalComments||"";
+  if(document.getElementById("conclusions"))document.getElementById("conclusions").value=r.conclusions||"";
+  if(document.getElementById("recommendations"))document.getElementById("recommendations").value=r.recommendations||"";
+  if(document.getElementById("corporateSupport"))document.getElementById("corporateSupport").value=r.corporateSupport||"No";
+  if(document.getElementById("supportNeeded"))document.getElementById("supportNeeded").value=r.supportNeeded||"";
+  if(document.getElementById("nextVisitDate"))document.getElementById("nextVisitDate").value=r.nextVisitDate||"";
+  if(document.getElementById("nextVisitObjective"))document.getElementById("nextVisitObjective").value=r.nextVisitObjective||"";
+  if(document.getElementById("evaluationStatus"))document.getElementById("evaluationStatus").value=r.evaluationStatus||"En proceso";
+
+  document.getElementById("ciaCode").textContent=r.code;
+
+  loadChecklist();
+  renderOpportunities();
+  renderActions();
+  if(typeof renderObservationsV29==="function")renderObservationsV29();
+  calculateScore();
+
+  setStep(2);
+  if(typeof showToast==="function")showToast(`Editando evaluación ${r.code}. Al guardar, se actualizará esta misma evaluación.`,"success");
+}
+
+function cancelEditingAssessment(){
+  if(!editingAssessmentCode)return;
+  editingAssessmentCode=null;
+  document.getElementById("ciaCode").textContent=generateCode();
+  if(typeof showToast==="function")showToast("Se salió del modo edición. Los próximos guardados crearán una evaluación nueva.","success");
+}
 let assessments=[];
 try{ assessments=JSON.parse(localStorage.getItem(storageKey)||"[]"); if(!Array.isArray(assessments)) assessments=[]; }catch(e){ assessments=[]; }
 
@@ -1836,7 +1915,7 @@ function fillOpportunityOptions(){const sel=document.getElementById("actOpportun
 function addAction(){const text=document.getElementById("actText").value.trim();if(!text)return alert("Agrega la acción.");const oppId=document.getElementById("actOpportunity").value;if(!oppId)return alert("Selecciona la oportunidad de mejora relacionada.");const opp=opportunities.find(o=>o.id===oppId)||{};const f=document.getElementById("actEvidence").files[0];actions.push({oppId,pillar:opp.pillar||"",criterion:opp.criterion||"",finding:opp.text||"",text,owner:document.getElementById("actOwner").value,date:document.getElementById("actDate").value,status:document.getElementById("actStatus").value,evidenceName:f?f.name:""});["actText","actOwner","actDate"].forEach(id=>document.getElementById(id).value="");document.getElementById("actEvidence").value="";document.getElementById("actOpportunity").value="";showSelectedOpportunity();renderActions()}
 function renderActions(){document.getElementById("actTable").innerHTML=actions.map((a,i)=>`<tr><td>${a.pillar||"-"}</td><td>${a.criterion||"-"}</td><td>${a.finding||(opportunities.find(o=>o.id===a.oppId)||{}).text||"-"}</td><td>${a.text}</td><td>${a.owner||"-"}</td><td>${a.date||"-"}</td><td>${a.status}</td><td>${a.evidenceName||"Sin evidencia"}${a.auto?'<div class="auto-tag">Generado desde Check List</div>':''}</td><td><button class="danger" onclick="actions.splice(${i},1);renderActions()">Borrar</button></td></tr>`).join("");updateSummary()}
 function updateSummary(){if(!document.getElementById("sumProject"))return;const sc=calculateScoreNoLoop();document.getElementById("sumProject").textContent=getProject();let hotelText=document.getElementById("hotel").value;if(isCheckinProject()&&document.getElementById("checkinArea").value)hotelText+=` | ${document.getElementById("checkinArea").value}`;if(isComanderoProject()){const units=operationalUnits.map(x=>String(x||"").trim()).filter(Boolean);if(units.length)hotelText+=` | ${units.join(", ")}`;}document.getElementById("sumHotel").textContent=hotelText;document.getElementById("sumPct").textContent=sc.pct+"%";document.getElementById("sumStatus").textContent=sc.status;document.getElementById("sumOpp").textContent=opportunities.length;document.getElementById("sumActions").textContent=actions.length;document.getElementById("sumOpenActions").textContent=actions.filter(a=>a.status!=="Completado").length}
-function renderHistory(){const box=document.getElementById("historyList");if(!assessments.length){box.innerHTML="<div class='assessments-card'>Aún no hay evaluaciones guardadas.</div>";return}box.innerHTML=assessments.slice().reverse().map(r=>{const unit=r.project==="Check-in Digital"?(r.checkinArea?` | Área: ${r.checkinArea}`:""):r.project==="Comandero Digital"&&r.operationalUnits?.length?` | Centros: ${r.operationalUnits.join(", ")}`:"";return `<div class="assessments-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><strong>${r.code}</strong> | ${r.project} | ${r.hotel}${unit}<br>Fecha: ${r.visitDate} | Ejecución efectiva: <strong>${r.score}%</strong> | Estado: ${r.status}<br>Criterios: ${r.checklist.length} | Acciones: ${r.actions.length} | Oportunidades: ${r.opportunities.length}</div><button type="button" class="danger mini-btn no-print" style="flex-shrink:0" onclick="deleteAssessment('${String(r.code||"").replace(/'/g,"\\'")}')">🗑️ Eliminar</button></div></div>`}).join("")}
+function renderHistory(){const box=document.getElementById("historyList");if(!assessments.length){box.innerHTML="<div class='assessments-card'>Aún no hay evaluaciones guardadas.</div>";return}box.innerHTML=assessments.slice().reverse().map(r=>{const unit=r.project==="Check-in Digital"?(r.checkinArea?` | Área: ${r.checkinArea}`:""):r.project==="Comandero Digital"&&r.operationalUnits?.length?` | Centros: ${r.operationalUnits.join(", ")}`:"";return `<div class="assessments-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><strong>${r.code}</strong> | ${r.project} | ${r.hotel}${unit}<br>Fecha: ${r.visitDate} | Ejecución efectiva: <strong>${r.score}%</strong> | Estado: ${r.status}<br>Criterios: ${r.checklist.length} | Acciones: ${r.actions.length} | Oportunidades: ${r.opportunities.length}</div><div style="display:flex;gap:6px;flex-shrink:0"><button type="button" class="secondary mini-btn no-print" onclick="loadAssessmentForEditing('${String(r.code||"").replace(/'/g,"\\'")}')">📝 Editar</button><button type="button" class="danger mini-btn no-print" onclick="deleteAssessment('${String(r.code||"").replace(/'/g,"\\'")}')">🗑️ Eliminar</button></div></div></div>`}).join("")}
 function deleteAssessment(code){
  const idx=assessments.findIndex(r=>r.code===code);
  if(idx===-1){showToast("No se encontró esa evaluación.","error");return;}
@@ -1931,9 +2010,17 @@ function saveAssessment(){
    showToast("Debes evaluar al menos un criterio antes de guardar.","error");
    setStep(2);return;
  }
- assessments.push(r);
+ const updatingIndex=editingAssessmentCode?assessments.findIndex(a=>a.code===editingAssessmentCode):-1;
+ const previousValue=updatingIndex>=0?assessments[updatingIndex]:null;
+ if(updatingIndex>=0){
+   r.code=editingAssessmentCode;
+   assessments[updatingIndex]=r;
+ }else{
+   assessments.push(r);
+ }
  if(!safeStorageSet(storageKey,JSON.stringify(assessments))){
-   assessments.pop();
+   if(updatingIndex>=0)assessments[updatingIndex]=previousValue;
+   else assessments.pop();
    showToast("No fue posible guardar la evaluación en este navegador.","error");return;
  }
  const key=contextKey();
@@ -1942,9 +2029,11 @@ function saveAssessment(){
  fillReportProjects();
  generateExecutiveReport();
  if(typeof renderDashboard==="function")renderDashboard();
+ const wasUpdating=updatingIndex>=0;
+ editingAssessmentCode=null;
  document.getElementById("ciaCode").textContent=generateCode();
  const unit=r.project==="Check-in Digital"?` | ${r.checkinArea}`:r.project==="Comandero Digital"?` | ${r.operationalUnits.join(", ")}`:"";
- showToast(`Evaluación ${r.code} guardada correctamente: ${r.hotel}${unit}.`);
+ showToast(`Evaluación ${r.code} ${wasUpdating?"actualizada":"guardada"} correctamente: ${r.hotel}${unit}.`);
 }
 
 function clearForm(){
@@ -3328,6 +3417,18 @@ function rebuildOpportunitiesFromChecklist(){
     });
   });
   actions=orderedActions;
+}
+
+function resyncOpportunitiesFromChecklist(){
+  rebuildOpportunitiesFromChecklist();
+  renderOpportunities();
+  renderActions();
+  if(typeof renderObservationsV29==="function")renderObservationsV29();
+  if(typeof syncGeneratedObservations==="function")syncGeneratedObservations(true);
+  calculateScore();
+  scheduleDraftSave();
+  const count=opportunities.length;
+  if(typeof showToast==="function")showToast(count?`Se generaron ${count} oportunidad(es) a partir del Check List.`:"No se encontraron criterios en Parcial o No cumple para generar oportunidades.","success");
 }
 
 syncAutoOpportunity=function(k){
