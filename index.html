@@ -876,7 +876,6 @@ const CLOUD_SYNC_KEYS = [
   "gm_cia_assessments_v33_clean",
   "gm_cia_templates_v35_admin_total",
   "gm_cia_project_hotels_v33",
-  "gm_impl_eval_drafts_v33_clean",
   "gm_cia_hotel_directors_v1"
 ];
 
@@ -930,16 +929,27 @@ async function cloudLoadAll() {
 let cloudRealtimeDebounce = null;
 function setupCloudRealtimeSync() {
   if (!sb) return;
+  function attemptRealtimeRefresh() {
+    const active = document.activeElement;
+    const isTyping = active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT");
+    if (isTyping) {
+      // El usuario está escribiendo ahora mismo: no interrumpir. Se reintentará en unos segundos.
+      clearTimeout(cloudRealtimeDebounce);
+      cloudRealtimeDebounce = setTimeout(attemptRealtimeRefresh, 3000);
+      return;
+    }
+    (async () => {
+      const updated = await cloudLoadAll();
+      if (updated && typeof startApplication === "function") {
+        startApplication();
+        if (typeof showToast === "function") showToast("Datos actualizados por otro usuario.", "success");
+      }
+    })();
+  }
   sb.channel("app_state_changes")
     .on("postgres_changes", { event: "*", schema: "public", table: "app_state" }, () => {
       clearTimeout(cloudRealtimeDebounce);
-      cloudRealtimeDebounce = setTimeout(async () => {
-        const updated = await cloudLoadAll();
-        if (updated && typeof startApplication === "function") {
-          startApplication();
-          if (typeof showToast === "function") showToast("Datos actualizados por otro usuario.", "success");
-        }
-      }, 600);
+      cloudRealtimeDebounce = setTimeout(attemptRealtimeRefresh, 600);
     })
     .subscribe();
 }
