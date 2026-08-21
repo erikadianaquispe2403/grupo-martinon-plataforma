@@ -3059,7 +3059,6 @@ function focusOtherCriterion(blockIndex){
     if(document.getElementById("project")?.value!=="__new__"){
       persistProjectTemplate(getProject());
     }
-    checklistState={};
     loadChecklist();
   }
   setTimeout(()=>{
@@ -3077,6 +3076,26 @@ function focusOtherCriterion(blockIndex){
   },30);
 }
 
+function remapChecklistStateForBlock(blockIndex,oldItems,newItems){
+  // Conserva los resultados/observaciones/evidencias ya capturados, re-asociándolos
+  // por el TEXTO del criterio (no por su posición), ya que la posición puede cambiar.
+  const oldEntries=(oldItems||[]).map((text,i)=>({text,key:blockIndex+"_"+i,data:checklistState[blockIndex+"_"+i]}));
+  const usedOldIndexes=new Set();
+  const newState={};
+  (newItems||[]).forEach((text,newIdx)=>{
+    const newKey=blockIndex+"_"+newIdx;
+    const matchIdx=oldEntries.findIndex((e,i)=>!usedOldIndexes.has(i)&&e.text===text&&e.data);
+    if(matchIdx>=0){
+      usedOldIndexes.add(matchIdx);
+      newState[newKey]=oldEntries[matchIdx].data;
+    }
+  });
+  Object.keys(checklistState).forEach(k=>{
+    if(!k.startsWith(blockIndex+"_"))newState[k]=checklistState[k];
+  });
+  checklistState=newState;
+}
+
 function saveAdminCriterion(blockIndex,itemIndex,key){
   const project=getProject();
   const tpl=templates[project];
@@ -3087,6 +3106,10 @@ function saveAdminCriterion(blockIndex,itemIndex,key){
     alert("Escribe el criterio antes de guardarlo.");
     return;
   }
+
+  const oldItems=[...(tpl[blockIndex].items||[])];
+  const oldKeyOfEdited=blockIndex+"_"+itemIndex;
+  const priorDataOfEdited=checklistState[oldKeyOfEdited];
 
   // Guardar el criterio como parte permanente de la plantilla del proyecto.
   tpl[blockIndex].items[itemIndex]=text;
@@ -3099,7 +3122,13 @@ function saveAdminCriterion(blockIndex,itemIndex,key){
   persistProjectTemplate(project);
   adminCriterionEditMode.delete(adminCriterionModeKey(blockIndex,itemIndex));
 
-  checklistState={};
+  remapChecklistStateForBlock(blockIndex,oldItems,block.items);
+  // El criterio recién editado conserva su propia calificación/observación previa,
+  // sin importar que el texto haya cambiado (el emparejamiento por texto no lo detectaría).
+  if(priorDataOfEdited){
+    const newIdxOfEdited=block.items.indexOf(text);
+    if(newIdxOfEdited>=0)checklistState[blockIndex+"_"+newIdxOfEdited]={...priorDataOfEdited,item:text};
+  }
   loadChecklist();
   rebuildOpportunitiesFromChecklist();
   renderOpportunities();
@@ -3122,7 +3151,6 @@ function editAdminCriterion(blockIndex,itemIndex){
 
 function cancelAdminCriterionEdit(blockIndex,itemIndex){
   adminCriterionEditMode.delete(adminCriterionModeKey(blockIndex,itemIndex));
-  checklistState={};
   loadChecklist();
 }
 
@@ -3140,7 +3168,6 @@ function saveAdminCriterionChanges(blockIndex,itemIndex,key){
   persistProjectTemplate(project);
   adminCriterionEditMode.delete(adminCriterionModeKey(blockIndex,itemIndex));
 
-  checklistState={};
   loadChecklist();
   rebuildOpportunitiesFromChecklist();
   renderOpportunities();
