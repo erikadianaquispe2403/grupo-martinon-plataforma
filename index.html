@@ -927,21 +927,21 @@ async function cloudLoadAll() {
 }
 
 let cloudRealtimeDebounce = null;
+function refreshSharedViewsFromCloud(){
+  // Actualiza vistas que dependen de datos compartidos (Dashboard, histórico, informe ejecutivo)
+  // SIN tocar el formulario / checklist que la persona pueda tener abierto en este momento.
+  if(typeof renderHistory==="function")renderHistory();
+  if(typeof fillReportProjects==="function")fillReportProjects();
+  if(typeof renderDashboard==="function")renderDashboard();
+  if(typeof generateExecutiveReport==="function")generateExecutiveReport();
+}
 function setupCloudRealtimeSync() {
   if (!sb) return;
   function attemptRealtimeRefresh() {
-    const active = document.activeElement;
-    const isTyping = active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT");
-    if (isTyping) {
-      // El usuario está escribiendo ahora mismo: no interrumpir. Se reintentará en unos segundos.
-      clearTimeout(cloudRealtimeDebounce);
-      cloudRealtimeDebounce = setTimeout(attemptRealtimeRefresh, 3000);
-      return;
-    }
     (async () => {
       const updated = await cloudLoadAll();
-      if (updated && typeof startApplication === "function") {
-        startApplication();
+      if (updated) {
+        refreshSharedViewsFromCloud();
         if (typeof showToast === "function") showToast("Datos actualizados por otro usuario.", "success");
       }
     })();
