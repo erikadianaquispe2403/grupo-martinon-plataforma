@@ -600,10 +600,10 @@ th:nth-child(4),td:nth-child(4){width:15%}
   <div class="summary-box no-print" style="margin-top:10px">
     <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer">
       <input type="checkbox" id="sharedHotelsToggle" onchange="toggleSharedHotelsBox()">
-      🏨 Esta evaluación también aplica a otros hoteles (ej. operación compartida: misma puerta, mismo personal, etc.)
+      🏨 Esta evaluación aplica a más de un hotel (ej. operación compartida: misma puerta, mismo personal, etc.)
     </label>
     <div id="sharedHotelsBox" class="hidden" style="margin-top:10px">
-      <div class="small" style="margin-bottom:8px">Selecciona los hoteles adicionales que comparten esta misma operación. Al guardar, se creará una evaluación idéntica para cada uno.</div>
+      <div class="small" style="margin-bottom:8px">Marca TODOS los hoteles a los que aplica esta evaluación (incluyendo el que ya seleccionaste arriba). Al guardar, se creará una evaluación idéntica para cada uno.</div>
       <div id="sharedHotelsList"></div>
     </div>
   </div>
@@ -1436,7 +1436,18 @@ function clearNewProjectDraft(){
 }
 let newProjectSelectedHotels=[];
 function todayISO(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().split("T")[0]}
-function generateCode(){return "GM-IP-"+new Date().getFullYear()+"-"+String(assessments.length+1).padStart(4,"0")}
+function generateCode(){
+  const year=new Date().getFullYear();
+  const prefix="GM-IP-"+year+"-";
+  const maxNum=assessments.reduce((max,a)=>{
+    if(a.code&&a.code.startsWith(prefix)){
+      const n=parseInt(a.code.slice(prefix.length),10);
+      if(!isNaN(n)&&n>max)return n;
+    }
+    return max;
+  },0);
+  return prefix+String(maxNum+1).padStart(4,"0");
+}
 function getProject(){const p=document.getElementById("project").value;return p==="__new__"?(document.getElementById("newProjectName").value||"Nuevo proyecto"):p}
 
 
@@ -2363,14 +2374,18 @@ function renderSharedHotelsList(){
  const project=getProject();
  const primaryHotel=document.getElementById("hotel")?.value||"";
  const applicable=(projectHotels[project]&&projectHotels[project].length)?projectHotels[project]:getAllPropertyNames();
- const others=applicable.filter(h=>h&&h!==primaryHotel);
- if(!others.length){
-   box.innerHTML='<div class="small">No hay otros hoteles asignados a este proyecto.</div>';
+ if(!applicable.length){
+   box.innerHTML='<div class="small">No hay hoteles asignados a este proyecto.</div>';
    sharedHotelsForEvaluation=[];
    return;
  }
- sharedHotelsForEvaluation=sharedHotelsForEvaluation.filter(h=>others.includes(h));
- box.innerHTML=others.map(h=>`<label style="display:block;margin-bottom:4px;font-weight:normal;cursor:pointer"><input type="checkbox" value="${escHtml(h)}" ${sharedHotelsForEvaluation.includes(h)?"checked":""} onchange="onSharedHotelCheck(this)"> ${escHtml(h)}</label>`).join("");
+ sharedHotelsForEvaluation=sharedHotelsForEvaluation.filter(h=>applicable.includes(h)&&h!==primaryHotel);
+ box.innerHTML=applicable.map(h=>{
+   if(h===primaryHotel){
+     return `<label style="display:block;margin-bottom:4px;font-weight:normal"><input type="checkbox" checked disabled> ${escHtml(h)} <span class="small">(seleccionado arriba)</span></label>`;
+   }
+   return `<label style="display:block;margin-bottom:4px;font-weight:normal;cursor:pointer"><input type="checkbox" value="${escHtml(h)}" ${sharedHotelsForEvaluation.includes(h)?"checked":""} onchange="onSharedHotelCheck(this)"> ${escHtml(h)}</label>`;
+ }).join("");
 }
 
 function onSharedHotelCheck(el){
