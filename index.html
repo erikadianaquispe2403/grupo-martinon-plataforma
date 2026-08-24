@@ -597,6 +597,16 @@ th:nth-child(4),td:nth-child(4){width:15%}
       <option value="">Selecciona un hotel...</option>
     </select>
   </div>
+  <div class="summary-box no-print" style="margin-top:10px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;cursor:pointer">
+      <input type="checkbox" id="sharedHotelsToggle" onchange="toggleSharedHotelsBox()">
+      🏨 Esta evaluación también aplica a otros hoteles (ej. operación compartida: misma puerta, mismo personal, etc.)
+    </label>
+    <div id="sharedHotelsBox" class="hidden" style="margin-top:10px">
+      <div class="small" style="margin-bottom:8px">Selecciona los hoteles adicionales que comparten esta misma operación. Al guardar, se creará una evaluación idéntica para cada uno.</div>
+      <div id="sharedHotelsList"></div>
+    </div>
+  </div>
 </div>
 <div><label>Fecha de visita</label><input id="visitDate" type="date"></div><div><label>Estado de la evaluación</label><select id="evaluationStatus"><option>Borrador</option><option>En proceso</option></select></div><div><label>Evaluador</label><input id="evaluator" value="Erika Quispe" placeholder="Erika Quispe"></div><div><label>Complejo</label><input id="hotelComplex" readonly></div><div><label>Director del Hotel</label><div class="field-with-action"><input id="hotelDirector" readonly><button type="button" class="secondary mini-btn" onclick="editHotelDirector()">✏️ Editar</button></div></div>
 <div><label>Director Corporativo responsable</label><div class="field-with-action"><input id="corporateDirector" readonly><button type="button" class="secondary mini-btn" onclick="editCorporateDirector()">✏️ Editar</button></div></div><div><label>Gerente entrevistado</label><input id="manager" placeholder="Nombre / cargo"></div>
@@ -2025,15 +2035,33 @@ function saveAssessment(){
  }
  const key=contextKey();
  if(drafts[key]){delete drafts[key];safeStorageSet(draftStorageKey,JSON.stringify(drafts));}
+ const wasUpdating=updatingIndex>=0;
+ const sharedHotels=(!wasUpdating)?[...sharedHotelsForEvaluation]:[];
+ const extraCodes=[];
+ sharedHotels.forEach(h=>{
+   const copy=cloneData(r);
+   copy.hotel=h;
+   copy.property=properties[h]||{};
+   copy.code=generateCode();
+   copy.savedAt=new Date().toISOString();
+   assessments.push(copy);
+   extraCodes.push(copy.code);
+ });
+ if(sharedHotels.length && !safeStorageSet(storageKey,JSON.stringify(assessments))){
+   assessments.splice(assessments.length-sharedHotels.length,sharedHotels.length);
+   showToast("No fue posible guardar las evaluaciones adicionales en este navegador.","error");return;
+ }
+ sharedHotelsForEvaluation=[];
+ if(document.getElementById("sharedHotelsToggle")){document.getElementById("sharedHotelsToggle").checked=false;document.getElementById("sharedHotelsBox").classList.add("hidden");}
  renderHistory();
  fillReportProjects();
  generateExecutiveReport();
  if(typeof renderDashboard==="function")renderDashboard();
- const wasUpdating=updatingIndex>=0;
  editingAssessmentCode=null;
  document.getElementById("ciaCode").textContent=generateCode();
  const unit=r.project==="Check-in Digital"?` | ${r.checkinArea}`:r.project==="Comandero Digital"?` | ${r.operationalUnits.join(", ")}`:"";
- showToast(`Evaluación ${r.code} ${wasUpdating?"actualizada":"guardada"} correctamente: ${r.hotel}${unit}.`);
+ const extraNote=extraCodes.length?` También se crearon ${extraCodes.length} evaluación(es) idéntica(s) para: ${sharedHotels.join(", ")}.`:"";
+ showToast(`Evaluación ${r.code} ${wasUpdating?"actualizada":"guardada"} correctamente: ${r.hotel}${unit}.${extraNote}`);
 }
 
 function clearForm(){
@@ -2317,6 +2345,41 @@ function onHotelChange(){
  showPropertyInfo();
  activeContextKey=contextKey();
  loadDraftForCurrentContext();
+ renderSharedHotelsList();
+}
+
+let sharedHotelsForEvaluation=[];
+
+function toggleSharedHotelsBox(){
+ const checked=document.getElementById("sharedHotelsToggle").checked;
+ document.getElementById("sharedHotelsBox").classList.toggle("hidden",!checked);
+ if(checked)renderSharedHotelsList();
+ else sharedHotelsForEvaluation=[];
+}
+
+function renderSharedHotelsList(){
+ const box=document.getElementById("sharedHotelsList");
+ if(!box)return;
+ const project=getProject();
+ const primaryHotel=document.getElementById("hotel")?.value||"";
+ const applicable=(projectHotels[project]&&projectHotels[project].length)?projectHotels[project]:getAllPropertyNames();
+ const others=applicable.filter(h=>h&&h!==primaryHotel);
+ if(!others.length){
+   box.innerHTML='<div class="small">No hay otros hoteles asignados a este proyecto.</div>';
+   sharedHotelsForEvaluation=[];
+   return;
+ }
+ sharedHotelsForEvaluation=sharedHotelsForEvaluation.filter(h=>others.includes(h));
+ box.innerHTML=others.map(h=>`<label style="display:block;margin-bottom:4px;font-weight:normal;cursor:pointer"><input type="checkbox" value="${escHtml(h)}" ${sharedHotelsForEvaluation.includes(h)?"checked":""} onchange="onSharedHotelCheck(this)"> ${escHtml(h)}</label>`).join("");
+}
+
+function onSharedHotelCheck(el){
+ const h=el.value;
+ if(el.checked){
+   if(!sharedHotelsForEvaluation.includes(h))sharedHotelsForEvaluation.push(h);
+ }else{
+   sharedHotelsForEvaluation=sharedHotelsForEvaluation.filter(x=>x!==h);
+ }
 }
 
 function scheduleDraftSave(){
@@ -2336,6 +2399,7 @@ function showPropertyInfo(){
  document.getElementById("pType").textContent=p.type||"—";
  document.getElementById("pRooms").textContent=p.rooms||"—";
  updateHotelDirector();
+ renderSharedHotelsList();
 }
 
 function fillReportProjects(){
