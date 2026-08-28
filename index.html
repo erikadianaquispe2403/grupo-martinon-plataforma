@@ -972,8 +972,16 @@ function setupCloudRealtimeSync() {
 // y en cuanto llega la respuesta de la nube, se refresca con lo más reciente de todos.
 window.addEventListener("load", async () => {
   const updated = await cloudLoadAll();
-  if (updated && typeof startApplication === "function") {
-    startApplication();
+  if (updated) {
+    // Antes esto reiniciaba toda la app (startApplication), lo que borraba
+    // el checklist si la persona ya había empezado a llenarlo mientras
+    // la sincronización con la nube seguía en curso. Ahora solo se
+    // refrescan las vistas compartidas y el código de evaluación
+    // mostrado, sin tocar el formulario activo.
+    if (typeof refreshSharedViewsFromCloud === "function") refreshSharedViewsFromCloud();
+    if (!editingAssessmentCode && document.getElementById("ciaCode") && typeof generateCode === "function") {
+      document.getElementById("ciaCode").textContent = generateCode();
+    }
   }
   setupCloudRealtimeSync();
 });
@@ -1971,9 +1979,10 @@ function showToast(message,type="success"){
 }
 
 function buildAssessmentRecord(){
+ if(typeof syncGeneratedObservations==="function")syncGeneratedObservations();
  const sc=calculateScoreNoLoop();
  return {
-   code:document.getElementById("ciaCode").textContent,
+   code:editingAssessmentCode||generateCode(),
    savedAt:new Date().toISOString(),
    project:getProject(),
    hotel:document.getElementById("hotel").value,
