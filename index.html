@@ -850,6 +850,10 @@ th:nth-child(4),td:nth-child(4){width:15%}
 
 <div id="printReportDocument" aria-hidden="true"></div>
 
+<div id="editingModeBanner" class="panel no-print" style="display:none;background:#fff3cd;border:1px solid #ffe69c;color:#664d03;padding:10px 14px;border-radius:10px;margin-bottom:10px;font-weight:600">
+  ✏️ Editando evaluación <span id="editingModeCode"></span> — al guardar se actualizará esta misma evaluación (no se creará una nueva).
+  <button type="button" class="secondary mini-btn" style="margin-left:10px" onclick="cancelEditingAssessment()">Salir del modo edición</button>
+</div>
 <div id="globalSaveBar" class="panel actions no-print" style="display:none">
   <button type="button" onclick="saveAssessment()">💾 Guardar evaluación</button>
   <button type="button" class="secondary" onclick="clearForm()">Limpiar formulario</button>
@@ -972,16 +976,8 @@ function setupCloudRealtimeSync() {
 // y en cuanto llega la respuesta de la nube, se refresca con lo más reciente de todos.
 window.addEventListener("load", async () => {
   const updated = await cloudLoadAll();
-  if (updated) {
-    // Antes esto reiniciaba toda la app (startApplication), lo que borraba
-    // el checklist si la persona ya había empezado a llenarlo mientras
-    // la sincronización con la nube seguía en curso. Ahora solo se
-    // refrescan las vistas compartidas y el código de evaluación
-    // mostrado, sin tocar el formulario activo.
-    if (typeof refreshSharedViewsFromCloud === "function") refreshSharedViewsFromCloud();
-    if (!editingAssessmentCode && document.getElementById("ciaCode") && typeof generateCode === "function") {
-      document.getElementById("ciaCode").textContent = generateCode();
-    }
+  if (updated && typeof startApplication === "function") {
+    startApplication();
   }
   setupCloudRealtimeSync();
 });
@@ -994,17 +990,33 @@ const OFFICIAL_VARALLO_VERSION="CLEAN-V30";
 
 const storageKey="gm_cia_assessments_v33_clean";
 let currentStep=0, opportunities=[], actions=[], checklistState={}, operationalUnits=[], editingAssessmentCode=null;
+const EDITING_CODE_KEY="gm_cia_editing_assessment_code_v1";
+function setEditingAssessmentCode(code){
+  editingAssessmentCode=code;
+  try{
+    if(code)localStorage.setItem(EDITING_CODE_KEY,code);
+    else localStorage.removeItem(EDITING_CODE_KEY);
+  }catch(e){}
+  const banner=document.getElementById("editingModeBanner");
+  const codeSpan=document.getElementById("editingModeCode");
+  if(banner&&codeSpan){
+    if(code){codeSpan.textContent=code;banner.style.display="block";}
+    else banner.style.display="none";
+  }
+}
 
-function loadAssessmentForEditing(code){
+function loadAssessmentForEditing(code,skipConfirm=false){
   const r=assessments.find(a=>a.code===code);
   if(!r){
     if(typeof showToast==="function")showToast("No se encontró esa evaluación.","error");
     return;
   }
-  const confirmed=confirm(`¿Abrir la evaluación ${r.code} (${r.project} | ${r.hotel}) para editarla?\n\nSe reemplazará cualquier información sin guardar que tengas en el formulario ahora mismo. Al volver a guardar, se actualizará esta misma evaluación (no se creará una duplicada).`);
-  if(!confirmed)return;
+  if(!skipConfirm){
+    const confirmed=confirm(`¿Abrir la evaluación ${r.code} (${r.project} | ${r.hotel}) para editarla?\n\nSe reemplazará cualquier información sin guardar que tengas en el formulario ahora mismo. Al volver a guardar, se actualizará esta misma evaluación (no se creará una duplicada).`);
+    if(!confirmed)return;
+  }
 
-  editingAssessmentCode=code;
+  setEditingAssessmentCode(code);
 
   document.getElementById("project").value=r.project;
   onProjectChange();
@@ -1065,9 +1077,21 @@ function loadAssessmentForEditing(code){
 
 function cancelEditingAssessment(){
   if(!editingAssessmentCode)return;
-  editingAssessmentCode=null;
+  setEditingAssessmentCode(null);
   document.getElementById("ciaCode").textContent=generateCode();
   if(typeof showToast==="function")showToast("Se salió del modo edición. Los próximos guardados crearán una evaluación nueva.","success");
+}
+function restoreEditingSessionIfAny(){
+  let pendingCode=null;
+  try{pendingCode=localStorage.getItem(EDITING_CODE_KEY);}catch(e){}
+  if(!pendingCode)return;
+  const exists=assessments.find(a=>a.code===pendingCode);
+  if(!exists){
+    try{localStorage.removeItem(EDITING_CODE_KEY);}catch(e){}
+    return;
+  }
+  loadAssessmentForEditing(pendingCode,true);
+  if(typeof showToast==="function")showToast(`Se restauró tu edición en progreso de ${pendingCode} (la página se había recargado). Verifica los datos antes de guardar.`,"success");
 }
 let assessments=[];
 try{ assessments=JSON.parse(localStorage.getItem(storageKey)||"[]"); if(!Array.isArray(assessments)) assessments=[]; }catch(e){ assessments=[]; }
@@ -1979,10 +2003,9 @@ function showToast(message,type="success"){
 }
 
 function buildAssessmentRecord(){
- if(typeof syncGeneratedObservations==="function")syncGeneratedObservations();
  const sc=calculateScoreNoLoop();
  return {
-   code:editingAssessmentCode||generateCode(),
+   code:document.getElementById("ciaCode").textContent,
    savedAt:new Date().toISOString(),
    project:getProject(),
    hotel:document.getElementById("hotel").value,
@@ -2077,7 +2100,7 @@ function saveAssessment(){
  fillReportProjects();
  generateExecutiveReport();
  if(typeof renderDashboard==="function")renderDashboard();
- editingAssessmentCode=null;
+ setEditingAssessmentCode(null);
  document.getElementById("ciaCode").textContent=generateCode();
  const unit=r.project==="Check-in Digital"?` | ${r.checkinArea}`:r.project==="Comandero Digital"?` | ${r.operationalUnits.join(", ")}`:"";
  const extraNote=extraCodes.length?` También se crearon ${extraCodes.length} evaluación(es) idéntica(s) para: ${sharedHotels.join(", ")}.`:"";
@@ -3617,6 +3640,7 @@ function startApplication(){
  updatePdfNamePreview();
  
  generateExecutiveReport();
+ restoreEditingSessionIfAny();
 }
 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",startApplication);}else{startApplication();}
 
