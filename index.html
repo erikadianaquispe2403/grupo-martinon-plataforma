@@ -2838,7 +2838,12 @@ function buildEditableWordDocument(){
  const avg=records.length?Math.round(records.reduce((s,r)=>s+Number(r.score||0),0)/records.length):0;
  const rows=records.map(r=>`<tr><td>${escHtml(r.hotel)}</td><td>${escHtml(r.checkinArea||r.area||"")}</td><td>${escHtml(r.visitDate||"")}</td><td>${Number(r.score||0)}%</td><td>${escHtml(r.status||"")}</td></tr>`).join("");
  const details=records.map(r=>{
-   const findings=(r.opportunities||[]).map(o=>`<li>${escHtml(o.text||o.finding||"")}${o.obs?` — ${escHtml(o.obs)}`:""}</li>`).join("")||"<li>Sin oportunidades registradas.</li>";
+   const findings=(r.opportunities||[]).map(o=>{
+    const mainText=(o.text||o.finding||"").trim();
+    const extraObs=(o.obs||"").trim();
+    const extra=(extraObs && extraObs!==mainText)?extraObs:"";
+    return `<li>${escHtml(mainText)}${extra?` — ${escHtml(extra)}`:""}</li>`;
+   }).join("")||"<li>Sin oportunidades registradas.</li>";
    const actions=(r.actions||[]).map(a=>`<tr><td>${escHtml(a.text||"")}</td><td>${escHtml(a.owner||"")}</td><td>${escHtml(a.date||"")}</td><td>${escHtml(a.status||"")}</td></tr>`).join("")||'<tr><td colspan="4">Sin acciones registradas.</td></tr>';
    const comments=(r.checklist||[]).filter(c=>String(c.obs||"").trim()).map(c=>`<li><b>${escHtml(c.block||"")} – ${escHtml(c.item||"")}:</b> ${escHtml(c.obs)}</li>`).join("")||"<li>Sin comentarios adicionales.</li>";
    return `<h2>${escHtml(r.hotel)} – ${escHtml(r.checkinArea||r.area||"")}</h2>
