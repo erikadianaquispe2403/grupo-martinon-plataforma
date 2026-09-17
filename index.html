@@ -980,6 +980,7 @@ window.addEventListener("load", async () => {
     startApplication();
   }
   setupCloudRealtimeSync();
+ if (typeof populateProjectDropdown === "function") populateProjectDropdown();
 });
 </script>
 
