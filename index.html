@@ -1613,7 +1613,7 @@ document.addEventListener("click",event=>{
 function populateProjectDropdown(){
  const sel=document.getElementById("project");
  const current=sel.value;
- const names=[...new Set(["Check-in Digital","Comandero Digital",...Object.keys(savedTemplates)])];
+ const names=[...new Set(["Check-in Digital","Comandero Digital",...Object.keys(JSON.parse(localStorage.getItem(templateStorageKey)||"{}"))])];
  sel.innerHTML=names.map(n=>`<option value="${n}">${n}</option>`).join("")+`<option value="__new__">+ Crear nuevo proyecto</option>`;
  if(names.includes(current)||current==="__new__")sel.value=current; else sel.value=names[0];
  updateDeleteProjectButton();
