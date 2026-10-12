@@ -2105,13 +2105,17 @@ function saveAssessment(){
  document.getElementById("ciaCode").textContent=generateCode();
  const unit=r.project==="Check-in Digital"?` | ${r.checkinArea}`:r.project==="Comandero Digital"?` | ${r.operationalUnits.join(", ")}`:"";
  const extraNote=extraCodes.length?` También se crearon ${extraCodes.length} evaluación(es) idéntica(s) para: ${sharedHotels.join(", ")}.`:"";
+ const savedMsg=`Evaluación ${r.code} ${wasUpdating?"actualizada":"guardada"} correctamente: ${r.hotel}${unit}.${extraNote} El formulario quedó limpio para una nueva validación; usa 📝 Editar en el historial para reabrirla.`;
+ clearForm(true);
+ setTimeout(()=>showToast(savedMsg),150);
+ return;
  showToast(`Evaluación ${r.code} ${wasUpdating?"actualizada":"guardada"} correctamente: ${r.hotel}${unit}.${extraNote}`);
 }
 
-function clearForm(){
+function clearForm(silent){
  const project=getProject();
  const hotel=document.getElementById("hotel")?.value||"";
- const confirmed=confirm(
+ const confirmed=silent===true?true:confirm(
    `¿Limpiar la evaluación actual?\n\n`+
    `Proyecto: ${project}\n`+
    `Hotel: ${hotel||"Sin seleccionar"}\n\n`+
@@ -2176,7 +2180,7 @@ function clearForm(){
 
  setTimeout(()=>{
    isClearingForm=false;
-   showToast("Evaluación actual limpiada correctamente.");
+   if(silent!==true)showToast("Evaluación actual limpiada correctamente.");
  },100);
 }
 function autoResize(t){t.style.height="auto";t.style.height=(t.scrollHeight+8)+"px"} function autoResizeAll(){document.querySelectorAll("textarea").forEach(autoResize)}
