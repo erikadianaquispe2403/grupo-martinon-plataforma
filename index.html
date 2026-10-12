@@ -844,6 +844,8 @@ th:nth-child(4),td:nth-child(4){width:15%}
     <button type="button" onclick="exportFullBackup()">💾 Descargar respaldo completo</button>
     <button type="button" class="secondary" onclick="document.getElementById('backupImportFile').click()">📂 Importar respaldo JSON</button>
     <input type="file" id="backupImportFile" accept=".json,application/json" class="file-input-hidden" onchange="importFullBackup(this.files[0])">
+    <button type="button" class="secondary" onclick="document.getElementById('addAssessmentsFile').click()">➕ Agregar evaluaciones desde archivo</button>
+    <input type="file" id="addAssessmentsFile" accept=".json,application/json" class="file-input-hidden" onchange="importAssessmentsFromFile(this.files[0]);this.value=''">
     <span class="small">El respaldo conserva evaluaciones, borradores, comentarios, planes de acción y configuraciones almacenadas en este navegador.</span>
   </div>
 </section>
@@ -2943,6 +2945,43 @@ function exportCommentsWord(){const rows=filteredComments(),name=`Comentarios ad
 function exportCommentsExcel(){const rows=filteredComments(),name=`Comentarios adicionales - ${formatFileDate(new Date().toISOString().slice(0,10))}.xls`;downloadGeneratedFile("\ufeff<!doctype html><meta charset=utf-8>"+commentsTableHtml(rows),"application/vnd.ms-excel",name);showToast("Archivo Excel generado.","success")}
 function printCommentsPage(){const rows=filteredComments(),w=window.open("","_blank");if(!w){showToast("Permite ventanas emergentes para imprimir.","error");return}w.document.write(`<!doctype html><html><head><meta charset=utf-8><title>Comentarios adicionales</title><style>body{font-family:Arial;padding:20px}table{border-collapse:collapse;width:100%;font-size:10px}th{background:#0b2f36;color:#fff}th,td{border:1px solid #ccc;padding:6px;vertical-align:top}@page{size:A4 landscape;margin:8mm}</style></head><body><h1>Comentarios adicionales consolidados</h1>${commentsTableHtml(rows)}</body></html>`);w.document.close();setTimeout(()=>w.print(),350)}
 function exportFullBackup(){const data={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);data[k]=localStorage.getItem(k)}downloadGeneratedFile(JSON.stringify(data,null,2),"application/json",`Respaldo_Plataforma_Grupo_Martinon_${new Date().toISOString().slice(0,10)}.json`);showToast("Respaldo completo descargado.","success")}
+
+function importAssessmentsFromFile(file){
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(reader.result);
+      const incoming=Array.isArray(data)?data:(data&&Array.isArray(data.assessments)?data.assessments:null);
+      if(!incoming||!incoming.length)throw new Error("El archivo no contiene evaluaciones.");
+      incoming.forEach((r,i)=>{if(!r||!r.project||!r.hotel||!Array.isArray(r.checklist))throw new Error("La evaluación #"+(i+1)+" no tiene proyecto, hotel o checklist.")});
+      const dups=incoming.filter(r=>assessments.some(a=>a.project===r.project&&a.hotel===r.hotel&&a.visitDate===r.visitDate&&(a.source||"")===(r.source||"")));
+      let msg="Se agregarán "+incoming.length+" evaluación(es) nuevas. Las existentes NO se modifican.";
+      if(dups.length)msg+="\n\nAtención: "+dups.length+" ya parece(n) existir con el mismo proyecto, hotel y fecha ("+dups.map(r=>r.hotel).join(", ")+"). Se agregarían de nuevo.";
+      if(!confirm(msg+"\n\n¿Continuar?"))return;
+      const previous=assessments.slice();
+      const added=[];
+      incoming.forEach(r=>{
+        const rec=JSON.parse(JSON.stringify(r));
+        rec.code=generateCode();
+        rec.savedAt=new Date().toISOString();
+        rec.property=properties[rec.hotel]||rec.property||{};
+        if(!rec.hotelDirector)rec.hotelDirector=hotelDirectors[rec.hotel]||"";
+        if(!rec.complex)rec.complex=getHotelComplex(rec.hotel);
+        assessments.push(rec);added.push(rec);
+      });
+      try{safeStorageSet(storageKey,JSON.stringify(assessments))}
+      catch(e){assessments=previous;throw new Error("No se pudo guardar: "+e.message)}
+      try{renderHistory()}catch(e){}
+      try{fillReportProjects()}catch(e){}
+      try{generateExecutiveReport()}catch(e){}
+      try{renderDashboard()}catch(e){}
+      try{renderCommentsPage()}catch(e){}
+      showToast("Se agregaron "+added.length+" evaluación(es): "+added.map(r=>r.code).join(", "));
+    }catch(e){alert("No fue posible agregar las evaluaciones: "+e.message)}
+  };
+  reader.readAsText(file,"utf-8");
+}
 function importFullBackup(file){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("Formato no válido");if(!confirm("Se importará el respaldo y se reemplazarán los datos locales con las claves incluidas. ¿Continuar?"))return;Object.entries(data).forEach(([k,v])=>localStorage.setItem(k,String(v)));(async()=>{if(typeof cloudPush==="function"&&typeof CLOUD_SYNC_KEYS!=="undefined"){for(const k of CLOUD_SYNC_KEYS){if(data[k]!==undefined)await cloudPush(k,String(data[k]))}}alert("Respaldo importado correctamente. La plataforma se recargará.");location.reload()})()}catch(e){alert("No fue posible importar el respaldo: "+e.message)}};reader.readAsText(file,"utf-8")}
 
 const checkinQAData=[];
